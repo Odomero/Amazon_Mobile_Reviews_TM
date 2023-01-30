@@ -1,3 +1,8 @@
+# install.packages(rstudioapi)
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+
+source("src/SupportFunctions.R")
 # Introduction
 
 # Packages Used
@@ -9,11 +14,18 @@ library(SnowballC)
 library(textstem)
 library(magrittr)
 
+library(tidytext)
+library(tm)
+library(topicmodels)
+library(tidyverse)
+
+
 # Data Cleaning
 
+
 ## Loading dataset
-phone_data <- read_csv("mobile-phones-20191226-items.csv")
-phone_review_data <- read_csv("mobile-phones-20191226-reviews.csv")
+phone_data <- read_csv("data/mobile-phones-20191226-items.csv")
+phone_review_data <- read_csv("data/mobile-phones-20191226-reviews.csv")
 
 ## Merging both datasets to retrieve phone names 
 phone_reviews_df <- merge(phone_review_data, phone_data, by="asin")
@@ -109,3 +121,37 @@ phone_reviews_df_bi <- phone_reviews_df %>% filter(rating.x != 3) %>%
 ## Splitting data into train and test data
 
 
+
+# Topic Modeling --------------------
+# create a document term matrix to clean
+reviewsCorpus <- Corpus(VectorSource(phone_reviews_df_bi$review)) 
+reviewsDTM <- DocumentTermMatrix(reviewsCorpus)
+
+# convert the document term matrix to a tidytext corpus
+reviewsDTM_tidy <- tidy(reviewsDTM)
+
+# I'm going to add my own custom stop words that I don't think will be
+# very informative in hotel reviews
+custom_stop_words <- tibble(word = c("phone", "smartphone"))
+
+# remove stopwords
+reviewsDTM_tidy_cleaned <- reviewsDTM_tidy %>% # take our tidy dtm and...
+  anti_join(stop_words, by = c("term" = "word")) %>% # remove English stopwords and...
+  anti_join(custom_stop_words, by = c("term" = "word")) # remove my custom stopwords
+
+# reconstruct cleaned documents (so that each word shows up the correct number of times)
+cleaned_documents <- reviewsDTM_tidy_cleaned %>%
+  group_by(document) %>% 
+  mutate(terms = toString(rep(term, count))) %>%
+  select(document, terms) %>%
+  unique()
+
+# check out what the cleaned documents look like (should just be a bunch of content words)
+# in alphabetic order
+head(cleaned_documents)
+
+
+
+
+# plot top ten terms in the hotel reviews by topic
+top_terms_by_topic_LDA(cleaned_documents$terms, number_of_topics = 5)
