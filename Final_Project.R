@@ -131,7 +131,7 @@ reviewsDTM <- DocumentTermMatrix(reviewsCorpus)
 reviewsDTM_tidy <- tidy(reviewsDTM)
 
 # I'm going to add my own custom stop words that I don't think will be
-# very informative in hotel reviews
+# very informative in phone reviews
 custom_stop_words <- tibble(word = c("phone", "smartphone"))
 
 # remove stopwords
@@ -153,5 +153,5 @@ head(cleaned_documents)
 
 
 
-# plot top ten terms in the hotel reviews by topic
+# plot top ten terms in the phone reviews by topic
 top_terms_by_topic_LDA(cleaned_documents$terms, number_of_topics = 5)
