@@ -165,10 +165,10 @@ phone_test1 <-as.data.frame(phone_test1)
 
 ```{r}
 # create our model using logistic regression
-phone_rating_model <- glm(rating~., 
+phone_rating_model <- glm(label~., 
                           data=phone_train1,
                           family = "binomial")
-summary(phone_rating_model)
+#summary(phone_rating_model)
 ```
 
 ```{r}
