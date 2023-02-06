@@ -1,0 +1,357 @@
+---
+title: "Topic Modeling"
+author: "Joao Macosso"
+date: "2023-02-06"
+output: 
+  html_document:
+    theme: spacelab
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+options(warn=-1)
+suppressWarnings(expression)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Required Libraries
+
+```{r}
+library(readr)
+library(dplyr)
+library(pander)
+library(tm)
+library(SnowballC)
+library(textstem)
+library(magrittr)
+library(tidytext)
+library(tm)
+library(topicmodels)
+library(tidyverse)
+library(scales)
+```
+
+## Import some user define functions
+
+```{r}
+source("src/SupportFunctions.R")
+```
+
+#NLP
+
+### Read Required Datasets
+
+```{r warning=FALSE}
+phone_review_data <- read_csv("data/mobile-phones-20191226-reviews.csv")
+brands <- read_csv("data/mobile-phones-20191226-items.csv")
+
+```
+
+Merge the dataset to include brands
+
+```{r}
+phone_review_data <- phone_review_data %>% left_join(brands %>% select(asin,brand),
+                                by = "asin")
+# We keep only the rows with available brand
+phone_review_data <- phone_review_data %>% filter(!is.na(brand))
+```
+
+### Clean the text
+
+```{r}
+docs <- Corpus(VectorSource(phone_review_data$body))
+
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+
+# remove unnecessary spaces
+docs <- tm_map(docs, stripWhitespace)
+
+# remove unnecessary punctuation
+docs <- tm_map(docs, removePunctuation)
+
+# remove unnecessary numbers
+docs <- tm_map(docs, removeNumbers)
+
+# change to lowercase
+docs <- tm_map(docs, content_transformer(tolower))
+
+# remove English stopwords
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, removeWords, stopwords("spanish"))
+```
+
+### Term frequency matrix
+
+```{r}
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+```
+
+# Topic Modeling
+
+```{r}
+data("stop_words")
+phone_review_data$body <- gsub("\\'", "", phone_review_data$body) # Removes Apostrophes white spaces
+phone_review_data$body  <-  gsub('[[:punct:] ]+',' ',phone_review_data$body) # Remove Punctuation 
+phone_review_data$body <- gsub('[[:digit:]]+', '', phone_review_data$body) # Remove numbers
+phone_review_data$body <- as.character(phone_review_data$body)
+```
+
+## Most impotant words in each rating
+
+```{r}
+# get the count of each word in review in eac h rating
+words <- phone_review_data %>%
+  unnest_tokens(word, body) %>%
+  anti_join(stop_words) %>%
+  count(rating, word) %>% 
+  ungroup() 
+
+# get the number of words per text
+total_words <- words %>% 
+  group_by(rating) %>% 
+  summarize(total = sum(n))
+
+# combine the two dataframes we just made
+words <- left_join(words, total_words)
+
+# get the tf_idf & order the words by degree of relevence
+tf_idf <- words %>%
+  bind_tf_idf(word, rating, n) %>%
+  select(-total) %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+```
+
+## Most impotant words in each brand
+
+```{r}
+
+tf_idf <- words %>%
+    bind_tf_idf(word, rating, n) %>%
+    select(-total) %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word))))
+
+
+tf_idf %>% group_by(rating) %>% 
+      top_n(7,tf_idf) %>% 
+      ungroup %>%
+      ggplot(aes(word, tf_idf, fill = as.factor(rating))) +
+      geom_col(show.legend = FALSE) + 
+      labs(title = "Top words in each Rating", x = "Words", y = "Frequency") + 
+      scale_y_continuous(n.breaks = 3, labels = scales::percent) +
+      facet_wrap(rating~., scales = "free")+
+      coord_flip()
+```
+
+```{r}
+# get the count of each word in review in eac h rating
+words_brand <- phone_review_data %>%
+  unnest_tokens(word, body) %>%
+  anti_join(stop_words) %>%
+  count(brand, word) %>% 
+  ungroup() 
+
+# get the number of words per text
+total_words <- words_brand %>% 
+  group_by(brand) %>% 
+  summarize(total = sum(n))
+
+# combine the two dataframes we just made
+words_brand <- left_join(words_brand, total_words)
+
+# get the tf_idf & order the words by degree of relevence
+tf_idf <- words_brand %>%
+  bind_tf_idf(word, brand, n) %>%
+  select(-total) %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+
+tf_idf_brand <- words_brand %>%
+    bind_tf_idf(word, brand, n) %>%
+    select(-total) %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word))))
+
+
+tf_idf_brand %>% group_by(brand) %>% 
+      top_n(7,tf_idf) %>% 
+      ungroup %>%
+      ggplot(aes(word, tf_idf, fill = as.factor(brand))) +
+      geom_col(show.legend = FALSE) + 
+      labs(title = "Top words in each Rating", x = "Words", y = "Frequency") + 
+      scale_y_continuous(n.breaks = 3, labels = scales::percent) +
+      facet_wrap(brand~., scales = "free")+
+      coord_flip()
+```
+
+```{r}
+#top_terms_by_topic_tfidf(text_df = phone_review_data, # dataframe
+#                         text_column = body, # column with text
+#                         group_column = rating, # column with topic label
+#                         plot = F) # return a plot
+#
+```
+
+# Classification
+
+```{r}
+phone_review_data = phone_review_data %>% filter(rating != 3)
+  mutate(rating = ifelse(rating <= 2, 0, 1))
+
+# first put smstext in tm corpus format
+corpus <- VCorpus(VectorSource(phone_review_data$body))
+# standardize to lowercase
+corpus <- tm_map(corpus, content_transformer(tolower))
+# remove tm stopwords
+corpus <- tm_map(corpus, removeWords, stopwords())
+# standardize whitespaces
+corpus <- tm_map(corpus, stripWhitespace)
+# remove punctuation
+corpus <- tm_map(corpus, removePunctuation)
+
+
+
+```
+
+```{r}
+library(caret)
+```
+
+```{r}
+dtm <- DocumentTermMatrix(corpus)
+dtm
+```
+
+```{r}
+frequent <- findFreqTerms(dtm, 10)
+head(frequent,8)
+```
+
+```{r}
+corpus <-tm_map(corpus,toSpace,"\\d.*")
+corpus <-tm_map(corpus,toSpace,"aaa")
+corpus <- tm_map(corpus, stripWhitespace)
+
+```
+
+## Split the train test data
+
+```{r}
+# set for the original raw data 
+train_idx <- createDataPartition(phone_review_data$rating, p=0.75, list=FALSE)
+train1 <- phone_review_data[train_idx,]
+test1 <- phone_review_data[-train_idx,]
+
+# set for the cleaned-up data
+train2 <- corpus[train_idx]
+test2 <- corpus[-train_idx]
+```
+
+```{r}
+dtm2 <- DocumentTermMatrix(corpus, list(global = c(2, Inf), dictionary = frequent))
+inspect(dtm2)
+
+dict2 <- findFreqTerms(dtm2, lowfreq=10)
+
+
+```
+
+```{r}
+# the same apply on train and test sets
+phone_train <- DocumentTermMatrix(train2, list(dictionary=dict2))
+phone_test <- DocumentTermMatrix(test2, list(dictionary=dict2))
+```
+
+```{r}
+# compare number of terms
+dtm
+dtm2
+phone_train
+phone_test
+```
+
+```{r}
+convert_counts <- function(x) {
+  x <- ifelse(x > 0, 1, 0)
+}
+
+phone_train <- phone_train %>% apply(MARGIN=2, FUN=convert_counts)
+phone_test <- phone_test %>% apply(MARGIN=2, FUN=convert_counts)
+
+# make it back to a data frame
+phone_train <- as.data.frame(phone_train)
+phone_test <- as.data.frame(phone_test)
+
+```
+
+```{r}
+str(phone_train)
+```
+
+```{r}
+# prepare the data
+phone_train1 <- cbind(label=factor(train1$rating), phone_train)
+phone_test1 <- cbind(label=factor(test1$rating), phone_test)
+
+phone_train1 <-as.data.frame(phone_train1)
+phone_test1 <-as.data.frame(phone_test1)
+```
+
+## Modeling
+
+```{r}
+# create our model using logistic regression
+phone_rating_model <- glm(rating~., 
+                          data=phone_train1,
+                          family = "binomial")
+summary(phone_rating_model)
+```
+
+```{r}
+# Predict test data based on model
+predict_reg <- predict(phone_rating_model, 
+                       phone_test1, type = "response")
+predict_reg  
+   
+# Changing probabilities
+predict_reg <- ifelse(predict_reg >0.5, 1, 0)
+   
+# Evaluating model accuracy
+# using confusion matrix
+table(phone_test1$rating, predict_reg)
+   
+missing_classerr <- mean(predict_reg != phone_test1$rating)
+print(paste('Accuracy =', 1 - missing_classerr))
+   
+# ROC-AUC Curve
+ROCPred <- prediction(predict_reg, phone_test1$rating) 
+ROCPer <- performance(ROCPred, measure = "tpr", 
+                             x.measure = "fpr")
+   
+auc <- performance(ROCPred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+   
+# Plotting curve
+plot(ROCPer)
+plot(ROCPer, colorize = TRUE, 
+     print.cutoffs.at = seq(0.1, by = 0.1), 
+     main = "ROC CURVE")
+abline(a = 0, b = 1)
+   
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+```
