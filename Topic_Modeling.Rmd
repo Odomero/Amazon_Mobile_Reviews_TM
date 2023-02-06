@@ -191,7 +191,7 @@ tf_idf_brand %>% group_by(brand) %>%
       ungroup %>%
       ggplot(aes(word, tf_idf, fill = as.factor(brand))) +
       geom_col(show.legend = FALSE) + 
-      labs(title = "Top words in each Rating", x = "Words", y = "Frequency") + 
+      labs(title = "Top words in each Mobile phone brand Review", x = "Words", y = "Frequency") + 
       scale_y_continuous(n.breaks = 3, labels = scales::percent) +
       facet_wrap(brand~., scales = "free")+
       coord_flip()
@@ -208,7 +208,7 @@ tf_idf_brand %>% group_by(brand) %>%
 # Classification
 
 ```{r}
-phone_review_data = phone_review_data %>% filter(rating != 3)
+phone_review_data = phone_review_data %>% filter(rating != 3) %>%
   mutate(rating = ifelse(rating <= 2, 0, 1))
 
 # first put smstext in tm corpus format
