@@ -1,6 +1,6 @@
 ---
 title: "Topic Modeling"
-author: "Joao Macosso"
+author: "Joao Macosso, Odomero, Koki"
 date: "2023-02-06"
 output: 
   html_document:
@@ -33,6 +33,7 @@ library(tm)
 library(topicmodels)
 library(tidyverse)
 library(scales)
+library(caret)
 ```
 
 ## Import some user define functions
@@ -58,6 +59,13 @@ phone_review_data <- phone_review_data %>% left_join(brands %>% select(asin,bran
                                 by = "asin")
 # We keep only the rows with available brand
 phone_review_data <- phone_review_data %>% filter(!is.na(brand))
+```
+The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 1/4 of it is will be used
+```{r}
+set.seed(10)
+selection <- createDataPartition(phone_review_data$rating, p=0.25, list=FALSE)
+phone_review_data <- phone_review_data[selection,]
+
 ```
 
 ### Clean the text
@@ -133,7 +141,6 @@ tf_idf <- words %>%
   mutate(word = factor(word, levels = rev(unique(word))))
 ```
 
-## Most impotant words in each brand
 
 ```{r}
 
@@ -154,6 +161,8 @@ tf_idf %>% group_by(rating) %>%
       facet_wrap(rating~., scales = "free")+
       coord_flip()
 ```
+
+## Most impotant words in each brand
 
 ```{r}
 # get the count of each word in review in eac h rating
