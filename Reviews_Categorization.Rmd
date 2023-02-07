@@ -225,7 +225,7 @@ as.numeric(test_roc$auc)
 ```
 Our logistic regression did not converge, this is most likely due to large sparsity of the data and possibly multicollinearity, Let us try to address these issues by using logistic regression with penalizations, we are going to use Lasso for regularization
 
-## Lasso
+### Lasso
 
 
 First lets convert the ata into matrix
@@ -270,5 +270,5 @@ test_roc_lasso = roc(phone_test1$label ~ as.vector(predict_lasso_reg),
 as.numeric(test_roc_lasso$auc)
 ```
 
-We can see that most metrix have improved a bit such as accuracy, AUC, while specifity is worse now.
+We can see that most metrix have improved a bit such as accuracy, Sensitivity, while specifity and aaaaaaauc is worse now.
 Also noting that our data is highly unbalanced with most reviews having rating 4 or 5, so it is very difficult to get a good model, an alternative would be to balance the dataset.
