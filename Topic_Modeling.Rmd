@@ -12,7 +12,7 @@ output:
       smooth_scroll: true
 ---
 
-```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+```{r setup, include=FALSE, warning=FALSE,  message=FALSE}
 options(warn=-1)
 suppressWarnings(expression)
 knitr::opts_chunk$set(echo = TRUE)
@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Required Libraries
 
-```{r}
+```{r , message=FALSE}
 library(readr)
 library(dplyr)
 library(pander)
@@ -36,13 +36,9 @@ library(scales)
 library(caret)
 ```
 
-## Import some user define functions
-
-```{r}
-source("src/SupportFunctions.R")
 ```
 
-#NLP
+# NLP
 
 ### Read Required Datasets
 
@@ -60,10 +56,10 @@ phone_review_data <- phone_review_data %>% left_join(brands %>% select(asin,bran
 # We keep only the rows with available brand
 phone_review_data <- phone_review_data %>% filter(!is.na(brand))
 ```
-The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 1/4 of it is will be used
+The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 15% of it is will be used
 ```{r}
 set.seed(10)
-selection <- createDataPartition(phone_review_data$rating, p=0.05, list=FALSE)
+selection <- createDataPartition(phone_review_data$rating, p=0.15, list=FALSE)
 phone_review_data <- phone_review_data[selection,]
 
 ```
@@ -113,6 +109,8 @@ phone_review_data$body <- gsub("\\'", "", phone_review_data$body) # Removes Apos
 phone_review_data$body  <-  gsub('[[:punct:] ]+',' ',phone_review_data$body) # Remove Punctuation 
 phone_review_data$body <- gsub('[[:digit:]]+', '', phone_review_data$body) # Remove numbers
 phone_review_data$body <- as.character(phone_review_data$body)
+phone_review_data <-  phone_review_data %>% 
+  mutate(body = wordStem(body))
 ```
 
 ## Most impotant words in each rating
@@ -162,6 +160,10 @@ tf_idf %>% group_by(rating) %>%
       coord_flip()
 ```
 
+The reviews are in English and Spanish, but we clearly see that the 5 and 4 rating the key words are excellent, buen(spanish for good), excelent(spanish for excellent),
+while the low rating 1 key words are negative words such as scam, peor(spanish for worst)
+
+
 ## Most impotant words in each brand
 
 ```{r}
@@ -198,11 +200,12 @@ tf_idf_brand <- words_brand %>%
 tf_idf_brand %>% group_by(brand) %>% 
       top_n(7,tf_idf) %>% 
       ungroup %>%
-      ggplot(aes(word, tf_idf, fill = as.factor(brand))) +
-      geom_col(show.legend = FALSE) + 
-      labs(title = "Top words in each Mobile phone brand Review", x = "Words", y = "Frequency") + 
+      ggplot() +
+      facet_wrap(brand~., scales = "free") +
+      geom_col(show.legend = FALSE, aes(reorder(word, tf_idf), tf_idf, fill = as.factor(brand))) + 
+      labs(title = "Top words in each Mobile phone brand Review",
+      x = "Words", y = "Frequency") + 
       scale_y_continuous(n.breaks = 3, labels = scales::percent) +
-      facet_wrap(brand~., scales = "free")+
       coord_flip()
 ```
 
