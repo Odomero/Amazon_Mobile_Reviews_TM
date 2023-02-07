@@ -63,7 +63,7 @@ phone_review_data <- phone_review_data %>% filter(!is.na(brand))
 The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 1/4 of it is will be used
 ```{r}
 set.seed(10)
-selection <- createDataPartition(phone_review_data$rating, p=0.25, list=FALSE)
+selection <- createDataPartition(phone_review_data$rating, p=0.05, list=FALSE)
 phone_review_data <- phone_review_data[selection,]
 
 ```

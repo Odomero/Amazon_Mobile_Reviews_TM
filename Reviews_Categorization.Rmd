@@ -34,6 +34,7 @@ library(topicmodels)
 library(tidyverse)
 library(scales)
 library(caret)
+library(e1071)
 ```
 
 ## Import some user define functions
@@ -55,14 +56,24 @@ phone_review_data <- phone_review_data %>% left_join(brands %>% select(asin,bran
                                 by = "asin")
 # We keep only the rows with available brand
 phone_review_data <- phone_review_data %>% filter(!is.na(brand))
+
+```
+
+The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 1/7 of it is will be used
+```{r}
+# The file is too large, rendering takes too much of the memory,
+# Therefore only the half of it is will be used
+set.seed(10)
+selection <- createDataPartition(phone_review_data$rating, p=0.15, list=FALSE)
+phone_review_data <- phone_review_data[selection,]
 ```
 
 
 # Classification
 
 ```{r}
-phone_review_data = phone_review_data %>% filter(rating != 3) %>%
-  mutate(rating = ifelse(rating <= 2, 0, 1))
+phone_review_data = phone_review_data %>%
+  mutate(rating = ifelse(rating <= 3, 0, 1))
 
 # first put smstext in tm corpus format
 corpus <- VCorpus(VectorSource(phone_review_data$body))
@@ -74,6 +85,11 @@ corpus <- tm_map(corpus, removeWords, stopwords())
 corpus <- tm_map(corpus, stripWhitespace)
 # remove punctuation
 corpus <- tm_map(corpus, removePunctuation)
+#stem
+corpus <- tm_map(corpus, stemDocument)
+
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, removeWords, stopwords("spanish"))
 
 ```
 ## Get the term matrix
@@ -174,35 +190,29 @@ phone_rating_model <- glm(label~.,
 ```{r}
 # Predict test data based on model
 predict_reg <- predict(phone_rating_model, 
-                       phone_test1, type = "response")
-predict_reg  
+                       na.omit(phone_test1), type = "response")
    
 # Changing probabilities
 predict_reg <- ifelse(predict_reg >0.5, 1, 0)
    
 # Evaluating model accuracy
 # using confusion matrix
-table(phone_test1$rating, predict_reg)
+table(phone_test1$label, predict_reg)
+
+```
+
+```{r}
    
-missing_classerr <- mean(predict_reg != phone_test1$rating)
+missing_classerr <- mean(predict_reg != phone_test1$label, na.rm = T)
 print(paste('Accuracy =', 1 - missing_classerr))
+
+```
+
+
+```{r}
    
 # ROC-AUC Curve
-ROCPred <- prediction(predict_reg, phone_test1$rating) 
-ROCPer <- performance(ROCPred, measure = "tpr", 
-                             x.measure = "fpr")
-   
-auc <- performance(ROCPred, measure = "auc")
-auc <- auc@y.values[[1]]
-auc
-   
-# Plotting curve
-plot(ROCPer)
-plot(ROCPer, colorize = TRUE, 
-     print.cutoffs.at = seq(0.1, by = 0.1), 
-     main = "ROC CURVE")
-abline(a = 0, b = 1)
-   
-auc <- round(auc, 4)
-legend(.6, .4, auc, title = "AUC", cex = 1)
+library(pROC)
+test_roc = roc(phone_test1$label ~ predict_reg, plot = TRUE, print.auc = TRUE)
+as.numeric(test_roc$auc)
 ```
