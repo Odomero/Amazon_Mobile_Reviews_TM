@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Required Libraries
 
-```{r}
+```{r, message=FALSE}
 library(readr)
 library(dplyr)
 library(pander)
@@ -35,6 +35,8 @@ library(tidyverse)
 library(scales)
 library(caret)
 library(e1071)
+library(pROC)
+library(glmnet)
 ```
 
 ## Import some user define functions
@@ -47,7 +49,7 @@ source("src/SupportFunctions.R")
 
 ### Read Required Datasets
 
-```{r warning=FALSE}
+```{r warning=FALSE , message=FALSE}
 phone_review_data <- read_csv("data/mobile-phones-20191226-reviews.csv")
 brands <- read_csv("data/mobile-phones-20191226-items.csv")
 
@@ -59,10 +61,10 @@ phone_review_data <- phone_review_data %>% filter(!is.na(brand))
 
 ```
 
-The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 1/7 of it is will be used
+The file is too large, it contains more than 30K reviews, rendering takes too much of the memory, Therefore only the 15% of it is will be used
 ```{r}
 # The file is too large, rendering takes too much of the memory,
-# Therefore only the half of it is will be used
+# Therefore only the 15% of it is will be used
 set.seed(10)
 selection <- createDataPartition(phone_review_data$rating, p=0.15, list=FALSE)
 phone_review_data <- phone_review_data[selection,]
@@ -71,9 +73,11 @@ phone_review_data <- phone_review_data[selection,]
 
 # Classification
 
+Our aim is to predict the rating of a based on a given review comement by the user, we will se binary classifier, therefore, we treat reviews lower or equal 2 as 0(Bad review), reviews larger or equal 4 as 1, good reviews.
+
 ```{r}
-phone_review_data = phone_review_data %>%
-  mutate(rating = ifelse(rating <= 3, 0, 1))
+phone_review_data = phone_review_data %>% filter(rating != 3) %>%
+  mutate(rating = ifelse(rating <= 2, 0, 1))
 
 # first put smstext in tm corpus format
 corpus <- VCorpus(VectorSource(phone_review_data$body))
@@ -118,6 +122,7 @@ corpus <- tm_map(corpus, stripWhitespace)
 ## Split the train test data
 
 ```{r}
+set.seed(10)
 # set for the original raw data 
 train_idx <- createDataPartition(phone_review_data$rating, p=0.7, list=FALSE)
 train1 <- phone_review_data[train_idx,]
@@ -179,12 +184,13 @@ phone_test1 <-as.data.frame(phone_test1)
 
 ## Modeling
 
+### Logistic regression
+
+
 ```{r}
-# create our model using logistic regression
-phone_rating_model <- glm(label~., 
+phone_rating_model <- glm(label~.,
                           data=phone_train1,
                           family = "binomial")
-#summary(phone_rating_model)
 ```
 
 ```{r}
@@ -197,14 +203,15 @@ predict_reg <- ifelse(predict_reg >0.5, 1, 0)
    
 # Evaluating model accuracy
 # using confusion matrix
-table(phone_test1$label, predict_reg)
-
+table(phone_test1$label, predict_reg, dnn=c("Actual", "Predicted"))
+#summary(phone_rating_model)
 ```
 
+
 ```{r}
-   
-missing_classerr <- mean(predict_reg != phone_test1$label, na.rm = T)
-print(paste('Accuracy =', 1 - missing_classerr))
+
+confMatrix1 <- confusionMatrix(factor(predict_reg), factor(phone_test1$label), positive = "1")
+confMatrix1
 
 ```
 
@@ -212,7 +219,56 @@ print(paste('Accuracy =', 1 - missing_classerr))
 ```{r}
    
 # ROC-AUC Curve
-library(pROC)
+
 test_roc = roc(phone_test1$label ~ predict_reg, plot = TRUE, print.auc = TRUE)
 as.numeric(test_roc$auc)
 ```
+Our logistic regression did not converge, this is most likely due to large sparsity of the data and possibly multicollinearity, Let us try to address these issues by using logistic regression with penalizations, we are going to use Lasso for regularization
+
+## Lasso
+
+
+First lets convert the ata into matrix
+```{r}
+X <- phone_train1 %>% select(-label) %>% as.matrix()
+Y <- as.matrix(phone_train1$label)
+XTest <- as.matrix(phone_test1 %>% select(-label))
+```
+
+
+Generally, the purpose of regularization is to balance accuracy and simplicity. This means, a model with the smallest number of predictors that also gives a good accuracy. To this end, the function cv.glmnet() finds also the value of lambda that gives the simplest model but also lies within one standard error of the optimal value of lambda
+```{r}
+cv.lasso <- cv.glmnet(X, Y, alpha = 1, family = "binomial")
+print(paste("Optimal lambda:", cv.lasso$lambda.min))
+
+# Fit the final model on the training data
+model_lasso <- glmnet(X, Y, alpha = 1, family = "binomial",
+                lambda = cv.lasso$lambda.min)
+
+
+```
+
+```{r}
+# Predict test data based on model
+predict_lasso_reg <- predict(model_lasso, 
+                             XTest,
+                       type = "response")
+
+# Changing probabilities
+predict_lasso_reg <- ifelse(predict_lasso_reg >0.5, 1, 0)
+   
+# Evaluating model accuracy
+# using confusion matrix
+confMatrix1_lasso <- confusionMatrix(factor(predict_lasso_reg), factor(phone_test1$label), positive = "1")
+confMatrix1_lasso
+```
+```{r}
+# ROC-AUC Curve
+
+test_roc_lasso = roc(phone_test1$label ~ as.vector(predict_lasso_reg), 
+                     plot = TRUE, print.auc = TRUE)
+as.numeric(test_roc_lasso$auc)
+```
+
+We can see that most metrix have improved a bit such as accuracy, AUC, while specifity is worse now.
+Also noting that our data is highly unbalanced with most reviews having rating 4 or 5, so it is very difficult to get a good model, an alternative would be to balance the dataset.
